@@ -18,3 +18,6 @@ Route::get('/debug/project-members', fn () => ProjectMember::all());
 Route::get('/debug/tasks', fn () => Task::all());
 Route::get('/debug/roles', fn () => Role::all());
 Route::get('/debug/project-member-roles', fn () => ProjectMemberRole::all());
+Route::get('/tasks-dev', function () {
+    return view('tasks-dev');
+});

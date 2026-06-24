@@ -24,6 +24,8 @@ return new class extends Migration
 
             $table->string('priority')->default('medium');
 
+            $table->boolean('requires_submission')->default(true);
+
             $table->enum('status', [
                 'todo',
                 'in_progress',

@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('full_name', 100);
             $table->string('phone', 20)->nullable();
             $table->string('department', 50)->nullable();
-            $table->enum('system_role', ['admin', 'team_lead', 'team_member'])
+            $table->enum('system_role', ['admin', 'team_member'])
                 ->default('team_member');
             $table->string('status', 20)->default('active');
             $table->dateTime('last_login')->nullable();
