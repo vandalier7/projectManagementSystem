@@ -52,4 +52,33 @@ class Task extends Model
     {
         return $this->belongsTo(Task::class, 'previous_task_id');
     }
+
+    public function isAssignedTo(User $user): bool
+    {
+        return $this->assigned_to === $user->id;
+    }
+
+    public function canBeReviewedBy(User $user): bool
+    {
+        return $this->project->isLedBy($user) || $user->isAdmin();
+    }
+
+    public function canBeEditedBy(User $user): bool
+    {
+        return $this->project->isLedBy($user) || $user->isAdmin();
+    }
+
+    public function canBeSubmittedBy(User $user): bool
+    {
+        return $this->isAssignedTo($user);
+    }
+
+    public function canBeSelfCompletedBy(User $user): bool
+    {
+        if (!$this->isAssignedTo($user)) {
+            return false;
+        }
+
+        return $this->project->isLedBy($user) || !$this->requires_submission;
+    }
 }

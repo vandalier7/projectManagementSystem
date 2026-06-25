@@ -54,4 +54,9 @@ class User extends Authenticatable
             'last_login' => 'datetime',
         ];
     }
+
+    public function isAdmin(): bool
+    {
+        return $this->system_role === 'admin';
+    }
 }

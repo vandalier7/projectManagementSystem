@@ -110,6 +110,14 @@
   .toast.error { background: var(--red); }
 
   .empty { text-align: center; padding: 30px; color: var(--text-tertiary); font-size: 13px; }
+
+  .capabilities { font-size: 12px; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; }
+  .cap-yes { color: var(--green); }
+  .cap-no { color: var(--text-tertiary); text-decoration: line-through; }
+  .role-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+  .role-tag.admin { background: var(--accent-bg); color: var(--accent); }
+  .role-tag.lead { background: var(--green-bg); color: var(--green); }
+  .role-tag.member { background: #f0ebe0; color: #6b5e3f; }
 </style>
 </head>
 <body>
@@ -119,6 +127,12 @@
   <div class="acting-as">
     <span>Acting as:</span>
     <select id="actingAsSelect"></select>
+  </div>
+</div>
+
+<div class="layout" style="margin-bottom: 16px;">
+  <div class="panel" id="capabilitiesPanel" style="padding: 12px 18px;">
+    <div id="capabilitiesContent"></div>
   </div>
 </div>
 
@@ -185,21 +199,80 @@ function actingAsId() {
   return Number(document.getElementById('actingAsSelect').value);
 }
 
-function isLeadOrAdmin(projectId) {
-  const acting = actingAsId();
-  const actingUser = users.find(u => u.id === acting);
-  if (!actingUser) return false;
-  if (actingUser.system_role === 'admin') return true;
-  const project = projects.find(p => p.id === projectId);
-  return project ? project.lead_id === acting : false;
+// --- Permission mirrors -----------------------------------------------
+// These mirror app/Models/User.php, Project.php, Task.php. The PHP
+// versions are the actual source of truth enforced by the server — these
+// exist only so the UI can show/hide controls accurately. If the PHP
+// logic changes, update these to match.
+
+function isAdmin(user) {
+  return user?.system_role === 'admin';
 }
 
-function isLeadOrAdminOnAnyProject() {
+function isLedBy(project, user) {
+  return project?.lead_id === user?.id;
+}
+
+function isAssignedTo(task, user) {
+  return task.assigned_to === user?.id;
+}
+
+function canBeReviewedBy(task, user, project) {
+  return isLedBy(project, user) || isAdmin(user);
+}
+
+function canBeEditedBy(task, user, project) {
+  return isLedBy(project, user) || isAdmin(user);
+}
+
+function canBeSubmittedBy(task, user) {
+  return isAssignedTo(task, user);
+}
+
+function canBeSelfCompletedBy(task, user, project) {
+  if (!isAssignedTo(task, user)) return false;
+  return isLedBy(project, user) || !task.requires_submission;
+}
+
+function isLeadOnAnyProject(user) {
+  return projects.some(p => p.lead_id === user?.id);
+}
+
+function renderCapabilitiesPanel() {
   const acting = actingAsId();
-  const actingUser = users.find(u => u.id === acting);
-  if (!actingUser) return false;
-  if (actingUser.system_role === 'admin') return true;
-  return projects.some(p => p.lead_id === acting);
+  const user = users.find(u => u.id === acting);
+  const content = document.getElementById('capabilitiesContent');
+  if (!user) { content.innerHTML = ''; return; }
+
+  const leadProjects = projects.filter(p => p.lead_id === user.id);
+  const roleTag = isAdmin(user)
+    ? '<span class="role-tag admin">Admin</span>'
+    : leadProjects.length > 0
+      ? '<span class="role-tag lead">Lead on ' + leadProjects.length + ' project(s)</span>'
+      : '<span class="role-tag member">Member</span>';
+
+  const caps = [];
+  caps.push([isAdmin(user) || isLeadOnAnyProject(user), 'Create tasks']);
+  caps.push([isAdmin(user) || isLeadOnAnyProject(user), 'Edit/delete any task on a project they lead']);
+  caps.push([isAdmin(user), 'Review submissions on ANY project (not just one they lead)']);
+  caps.push([!isAdmin(user), 'Submit/take back their own assigned tasks']);
+  caps.push([true, 'View all tasks (read access is project-wide for everyone)']);
+
+  content.innerHTML = `
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+      <strong>${escapeHtml(user.full_name)}</strong> ${roleTag}
+    </div>
+    <div class="capabilities">
+      ${caps.map(([allowed, label]) => `<span class="${allowed ? 'cap-yes' : 'cap-no'}">${allowed ? '✓' : '✗'} ${label}</span>`).join('')}
+    </div>
+  `;
+}
+
+function taskCanManage(task) {
+  const acting = actingAsId();
+  const user = users.find(u => u.id === acting);
+  const project = projects.find(p => p.id === task.project_id);
+  return canBeEditedBy(task, user, project);
 }
 
 function userName(id) {
@@ -241,6 +314,7 @@ async function loadAll() {
   renderAssigneeOptions();
   renderTasks();
   updateCreatePanelVisibility();
+  renderCapabilitiesPanel();
 }
 
 function renderActingAsOptions() {
@@ -306,7 +380,7 @@ function renderTasks() {
 
 function renderActions(t) {
   const acting = actingAsId();
-  const canManage = isLeadOrAdmin(t.project_id);
+  const canManage = taskCanManage(t);
   let html = '';
 
   if (t.status === 'todo' && t.assigned_to === acting) {
@@ -314,6 +388,9 @@ function renderActions(t) {
   }
   if (t.status === 'in_progress' && t.assigned_to === acting) {
     html += `<button class="small primary" data-action="submit" data-task-id="${t.id}">Submit / Complete</button>`;
+  }
+  if (t.status === 'submitted' && t.assigned_to === acting) {
+    html += `<button class="small" data-action="takeback" data-task-id="${t.id}">Take back</button>`;
   }
   if (t.status === 'submitted' && canManage) {
     html += `<button class="small success" data-action="approve" data-task-id="${t.id}">Approve</button>`;
@@ -331,7 +408,9 @@ function renderActions(t) {
 }
 
 function updateCreatePanelVisibility() {
-  document.getElementById('createPanel').style.display = isLeadOrAdminOnAnyProject() ? 'block' : 'none';
+  const acting = actingAsId();
+  const user = users.find(u => u.id === acting);
+  document.getElementById('createPanel').style.display = (isAdmin(user) || isLeadOnAnyProject(user)) ? 'block' : 'none';
 }
 
 async function handleAction(action, taskId) {
@@ -354,6 +433,12 @@ async function handleAction(action, taskId) {
         showToast('Task completed.');
         await loadAll();
       }
+    }
+
+    else if (action === 'takeback') {
+      await api(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify({ acting_as_user_id: acting, status: 'in_progress' }) });
+      showToast('Submission taken back.');
+      await loadAll();
     }
 
     else if (action === 'approve') {
@@ -558,6 +643,7 @@ function escapeHtml(str) {
 document.getElementById('actingAsSelect').addEventListener('change', () => {
   renderTasks();
   updateCreatePanelVisibility();
+  renderCapabilitiesPanel();
 });
 
 loadAll().catch(err => showToast('Failed to load: ' + err.message, true));

@@ -45,4 +45,9 @@ class Project extends Model
     {
         return $this->hasMany(Task::class);
     }
+
+    public function isLedBy(User $user): bool
+    {
+        return $this->lead_id === $user->id;
+    }
 }
