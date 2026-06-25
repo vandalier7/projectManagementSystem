@@ -9,56 +9,73 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    public function index()
-    {
-        return User::all();
-    }
+	## Returns all users. No restriction — any authenticated user can view the list.
+	public function index()
+	{
+		return User::all();
+	}
 
-    public function show(User $user)
-    {
-        return $user;
-    }
+	## Returns a single user. No restriction — any authenticated user can view.
+	public function show(User $user)
+	{
+		return $user;
+	}
 
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'username' => 'required|string|max:50|unique:users,username',
-            'email' => 'required|email|max:100|unique:users,email',
-            'password' => 'required|string|min:6',
-            'full_name' => 'required|string|max:100',
-            'phone' => 'nullable|string|max:20',
-            'department' => 'nullable|string|max:50',
-            'system_role' => 'required|in:admin,team_member',
-        ]);
+	## Admin only — creates a new user account.
+	public function store(Request $request)
+	{
+		if (!$request->user()->isAdmin()) {
+			return response()->json(['message' => 'Only admins can create users.'], 403);
+		}
 
-        $validated['password'] = bcrypt($validated['password']);
+		$validated = $request->validate([
+			'username' => 'required|string|max:50|unique:users,username',
+			'email' => 'required|email|max:100|unique:users,email',
+			'password' => 'required|string|min:6',
+			'full_name' => 'required|string|max:100',
+			'phone' => 'nullable|string|max:20',
+			'department' => 'nullable|string|max:50',
+			'system_role' => 'required|in:admin,team_member',
+		]);
 
-        $user = User::create($validated);
+		$validated['password'] = bcrypt($validated['password']);
 
-        return response()->json($user, 201);
-    }
+		$user = User::create($validated);
 
-    public function update(Request $request, User $user)
-    {
-        $validated = $request->validate([
-            'username' => ['sometimes', 'string', 'max:50', Rule::unique('users', 'username')->ignore($user->id)],
-            'email' => ['sometimes', 'email', 'max:100', Rule::unique('users', 'email')->ignore($user->id)],
-            'full_name' => 'sometimes|string|max:100',
-            'phone' => 'nullable|string|max:20',
-            'department' => 'nullable|string|max:50',
-            'system_role' => 'sometimes|in:admin,team_member',
-            'status' => 'sometimes|string|max:20',
-        ]);
+		return response()->json($user, 201);
+	}
 
-        $user->update($validated);
+	## Admin only — updates an existing user account.
+	public function update(Request $request, User $user)
+	{
+		if (!$request->user()->isAdmin()) {
+			return response()->json(['message' => 'Only admins can edit users.'], 403);
+		}
 
-        return response()->json($user);
-    }
+		$validated = $request->validate([
+			'username' => ['sometimes', 'string', 'max:50', Rule::unique('users', 'username')->ignore($user->id)],
+			'email' => ['sometimes', 'email', 'max:100', Rule::unique('users', 'email')->ignore($user->id)],
+			'full_name' => 'sometimes|string|max:100',
+			'phone' => 'nullable|string|max:20',
+			'department' => 'nullable|string|max:50',
+			'system_role' => 'sometimes|in:admin,team_member',
+			'status' => 'sometimes|string|max:20',
+		]);
 
-    public function destroy(User $user)
-    {
-        $user->delete();
+		$user->update($validated);
 
-        return response()->json(null, 204);
-    }
+		return response()->json($user);
+	}
+
+	## Admin only — deletes a user account.
+	public function destroy(Request $request, User $user)
+	{
+		if (!$request->user()->isAdmin()) {
+			return response()->json(['message' => 'Only admins can delete users.'], 403);
+		}
+
+		$user->delete();
+
+		return response()->json(null, 204);
+	}
 }

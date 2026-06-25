@@ -64,20 +64,11 @@ class TaskController extends Controller
         $actingUser = User::findOrFail($validated['acting_as_user_id']);
 
         $result = DB::transaction(function () use ($task, $validated, $request, $actingUser) {
-            // Re-fetch and lock the row INSIDE the transaction. Any other
-            // request trying to update this same task waits here until we
-            // commit or roll back — this is what actually prevents the
-            // race condition (e.g. approve vs. takeback happening at once).
             $task = Task::lockForUpdate()->findOrFail($task->id);
 
             if (array_key_exists('status', $validated)) {
                 $newStatus = $validated['status'];
                 $currentStatus = $task->status;
-
-                // Every allowed transition is named explicitly below.
-                // Anything not listed here falls through to the default
-                // case at the bottom and is rejected — secure by default,
-                // not secure by enumeration.
 
                 if ($currentStatus === 'submitted' && in_array($newStatus, ['done', 'closed'])) {
                     if (!$task->canBeReviewedBy($actingUser)) {
@@ -112,11 +103,6 @@ class TaskController extends Controller
                 }
 
                 elseif ($currentStatus === 'submitted' && $newStatus === 'in_progress') {
-                    // Takeback: the assignee pulls their own submission back
-                    // before the lead has reviewed it. Only valid while
-                    // still 'submitted' — the lock above guarantees we're
-                    // reading the true current status, not a stale one,
-                    // even if a review was racing against this request.
                     if (!$task->canBeSubmittedBy($actingUser)) {
                         abort(response()->json(['message' => 'Only the assigned member can take back this submission.'], 403));
                     }
@@ -148,10 +134,6 @@ class TaskController extends Controller
                 }
 
                 else {
-                    // Anything not explicitly matched above is rejected,
-                    // including the bug this whole rewrite fixes: arbitrary
-                    // backward jumps like done -> todo, or skipping straight
-                    // from todo to submitted.
                     abort(response()->json([
                         'message' => "The transition from '{$currentStatus}' to '{$newStatus}' is not allowed.",
                     ], 403));
@@ -174,8 +156,15 @@ class TaskController extends Controller
         return response()->json($result);
     }
 
-    public function destroy(Task $task)
+    ## Admin or lead only — soft deletes the task.
+    public function destroy(Request $request, Task $task)
     {
+        $actingUser = User::findOrFail($request->input('acting_as_user_id'));
+
+        if (!$task->canBeEditedBy($actingUser)) {
+            return response()->json(['message' => 'Only the project lead or an admin can delete tasks.'], 403);
+        }
+
         $task->delete();
 
         return response()->json(null, 204);
