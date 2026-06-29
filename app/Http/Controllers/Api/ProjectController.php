@@ -63,6 +63,12 @@ class ProjectController extends Controller
 
 		$project = Project::create($validated);
 
+		// Auto-add the lead as a project member on creation.
+		ProjectMember::firstOrCreate([
+			'project_id' => $project->id,
+			'user_id' => $project->lead_id,
+		]);
+
 		return response()->json($project, 201);
 	}
 
