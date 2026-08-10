@@ -26,6 +26,7 @@ class Task extends Model
         'reviewed_at',
         'due_date',
         'completed_date',
+        'sort_order',
     ];
 
     protected $casts = [
@@ -43,7 +44,7 @@ class Task extends Model
 
     public function assignee()
     {
-        return $this->belongsTo(User::class, 'assigned_to');
+        return $this->belongsTo(User::class, 'assigned_to')->withTrashed();
     }
 
     public function reviewer()
@@ -68,6 +69,9 @@ class Task extends Model
 
     public function canBeEditedBy(User $user): bool
     {
+        if (in_array($this->status, ['done', 'closed', 'submitted']) && !$user->isAdmin()) {
+            return false;
+        }
         return $this->project->isLedBy($user) || $user->isAdmin();
     }
 
@@ -83,5 +87,14 @@ class Task extends Model
         }
 
         return $this->project->isLedBy($user) || !$this->requires_submission;
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Task $task) {
+            if ($task->project->is_system) {
+                $task->requires_submission = false;
+            }
+        });
     }
 }

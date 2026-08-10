@@ -12,21 +12,33 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
-        $admin = User::factory()->admin()->create([
-            'username' => 'admin1',
-            'email' => 'admin@test.com',
-            'full_name' => 'Admin Tester',
+        // Admin account
+        $admin = User::create([
+            'username' => 'admin',
+            'email' => 'admin@temp.net',
+            'password' => 'adminpass', // auto-hashed via the 'hashed' cast on User
+            'full_name' => 'Admin User',
+            'system_role' => 'admin',
+            'status' => 'active',
+            'login_count' => 0,
+            'profile_completed' => true,
+            'must_change_password' => false,
         ]);
 
-        $lead = User::factory()->create([
-            'username' => 'lead1',
-            'email' => 'lead@test.com',
-            'full_name' => 'Lead Tester',
+        // Team member account (James Duran / Vandalier)
+        $vandalier = User::create([
+            'username' => 'Vandalier',
+            'email' => 'jahadielduran26@gmail.com',
+            'password' => 'qwertyuiop', // auto-hashed via the 'hashed' cast on User
+            'full_name' => 'James Duran',
+            'system_role' => 'team_member',
+            'status' => 'active',
+            'login_count' => 0,
+            'profile_completed' => true,
+            'must_change_password' => false,
         ]);
 
-        $members = User::factory()->count(3)->create();
-
-        $this->command->info("Seeded: 1 admin, 1 lead, {$members->count()} members.");
+        $this->command->info('Seeded: 1 admin (admin@temp.net), 1 team member (Vandalier / jahadielduran26@gmail.com).');
 
         $this->call([
             RoleSeeder::class,

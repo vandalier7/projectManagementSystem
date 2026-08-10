@@ -2,16 +2,19 @@
 
 namespace App\Models;
 
+use App\Models\Project;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class User extends Authenticatable
 {
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    
 
     /**
      * The attributes that are mass assignable.
@@ -30,6 +33,8 @@ class User extends Authenticatable
         'last_login',
         'login_count',
         'avatar_url',
+        'profile_completed',
+        'must_change_password',
     ];
 
     /**
@@ -58,5 +63,24 @@ class User extends Authenticatable
     public function isAdmin(): bool
     {
         return $this->system_role === 'admin';
+    }
+
+    protected static function booted(): void
+    {
+        static::created(function (User $user) {
+            $systemProjects = Project::where('is_system', true)->get();
+
+            foreach ($systemProjects as $project) {
+                $project->members()->create([
+                    'user_id' => $user->id,
+                    'joined_at' => now(),
+                ]);
+            }
+        });
+    }
+
+    public function projectMemberships()
+    {
+        return $this->hasMany(\App\Models\ProjectMember::class);
     }
 }

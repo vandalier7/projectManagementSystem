@@ -11,24 +11,22 @@ class ProjectMemberSeeder extends Seeder
 {
     public function run(): void
     {
-        $project = Project::first();
-        $lead = User::where('username', 'lead1')->first();
-        $members = User::where('system_role', 'team_member')
-            ->where('id', '!=', $lead->id)
-            ->get();
+        $project = Project::where('is_system', false)->first();
+        $admin = User::where('username', 'admin')->first();
+        $vandalier = User::where('username', 'Vandalier')->first();
 
+        // Admin is the project lead, and also a formal member row.
         ProjectMember::create([
             'project_id' => $project->id,
-            'user_id' => $lead->id,
+            'user_id' => $admin->id,
         ]);
 
-        foreach ($members as $member) {
-            ProjectMember::create([
-                'project_id' => $project->id,
-                'user_id' => $member->id,
-            ]);
-        }
+        // Vandalier is the (sole) team member on the project.
+        ProjectMember::create([
+            'project_id' => $project->id,
+            'user_id' => $vandalier->id,
+        ]);
 
-        $this->command->info('Seeded: project membership for lead + ' . $members->count() . ' members.');
+        $this->command->info('Seeded: project membership - admin (lead) + Vandalier (member).');
     }
 }

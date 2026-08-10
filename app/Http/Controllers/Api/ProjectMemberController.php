@@ -63,6 +63,10 @@ class ProjectMemberController extends Controller
             return response()->json(['message' => 'The project lead cannot be removed as a member. Reassign the lead first.'], 422);
         }
 
+        if ($project->is_system) {
+            return response()->json(['message' => 'Members cannot be removed from a system project.'], 422);
+        }
+
         $membership = $project->members()->where('user_id', $user->id)->first();
 
         if (!$membership) {
