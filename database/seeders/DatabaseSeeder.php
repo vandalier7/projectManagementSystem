@@ -28,9 +28,9 @@ class DatabaseSeeder extends Seeder
         // Team member account (James Duran / Vandalier)
         $vandalier = User::create([
             'username' => 'Vandalier',
-            'email' => 'jahadielduran26@gmail.com',
+            'email' => 'vandalier@gmail.com',
             'password' => 'qwertyuiop', // auto-hashed via the 'hashed' cast on User
-            'full_name' => 'James Duran',
+            'full_name' => 'Van Dalier',
             'system_role' => 'team_member',
             'status' => 'active',
             'login_count' => 0,
