@@ -35,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/invitations/{token}/complete', [InvitationController::class, 'complete']);
 
     // Projects
+    Route::get('/projects/system', [ProjectController::class, 'system']);
     Route::get('/projects/system/tasks', [TaskController::class, 'systemTasks']);
     Route::get('/projects/{project}/heartbeat', [ProjectController::class, 'heartbeat']);
     Route::post('/projects/{project}/logo', [ProjectController::class, 'uploadLogo']);

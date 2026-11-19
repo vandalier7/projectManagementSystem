@@ -45,6 +45,20 @@ class ProjectController extends Controller
 		return $project;
 	}
 
+	## The system ("Main"/"General") project with its members. Every user is a
+	## member, so this lets the dashboard find it without knowing its id.
+	public function system(Request $request)
+	{
+		$project = Project::main() ?? abort(404, 'System project not found.');
+
+		abort_unless($request->user()->can('view', $project), 403, 'You do not have access to this project.');
+
+		return $project->load([
+			'lead',
+			'members.user:id,full_name,system_role,email,phone,department,avatar_url,profile_completed',
+		]);
+	}
+
 	## Returns the most recent update timestamp across the project and its tasks.
 	public function heartbeat(Request $request, Project $project)
 	{

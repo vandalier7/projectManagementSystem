@@ -107,6 +107,15 @@ class AuthorizationTest extends TestCase
         $this->getJson('/api/projects/system/tasks')->assertOk()->assertJsonCount(3);
     }
 
+    public function test_system_project_endpoint_returns_members(): void
+    {
+        Sanctum::actingAs($this->admin);
+        $this->getJson('/api/projects/system')
+            ->assertOk()
+            ->assertJsonPath('id', $this->systemProject->id)
+            ->assertJsonPath('is_system', true);
+    }
+
     public function test_lead_can_manage_members_but_member_cannot(): void
     {
         Sanctum::actingAs($this->member);
