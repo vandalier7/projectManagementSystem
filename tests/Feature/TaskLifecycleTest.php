@@ -67,12 +67,14 @@ class TaskLifecycleTest extends TestCase
             'status' => 'closed',
             'review_comment' => 'Missing mobile layout',
             'new_title' => 'Build landing page (v2)',
+            'new_priority' => 'high',
         ])->assertOk();
 
         $response->assertJsonPath('closed_task.status', 'closed')
             ->assertJsonPath('closed_task.review_comment', 'Missing mobile layout')
             ->assertJsonPath('revision_task.title', 'Build landing page (v2)')
             ->assertJsonPath('revision_task.status', 'todo')
+            ->assertJsonPath('revision_task.priority', 'high')
             ->assertJsonPath('revision_task.previous_task_id', $task->id)
             ->assertJsonPath('revision_task.assigned_to', $this->member->id);
     }

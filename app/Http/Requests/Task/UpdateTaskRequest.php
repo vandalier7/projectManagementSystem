@@ -29,21 +29,22 @@ class UpdateTaskRequest extends FormRequest
             'new_title' => 'sometimes|nullable|string|max:255',
             'new_description' => 'sometimes|nullable|string|max:255',
             'new_assigned_to' => 'sometimes|nullable|exists:users,id',
+            'new_priority' => 'sometimes|nullable|string|max:255',
             'new_due_date' => 'sometimes|nullable|date',
         ];
     }
 
-    /** @return array{new_title?: string, new_description?: string, new_assigned_to?: int, new_due_date?: string} */
+    /** @return array{new_title?: string, new_description?: string, new_assigned_to?: int, new_priority?: string, new_due_date?: string} */
     public function revisionOverrides(): array
     {
         return array_filter(
-            $this->safe()->only(['new_title', 'new_description', 'new_assigned_to', 'new_due_date']),
+            $this->safe()->only(['new_title', 'new_description', 'new_assigned_to', 'new_priority', 'new_due_date']),
             fn ($value) => $value !== null,
         );
     }
 
     public function changes(): array
     {
-        return $this->safe()->except(['new_title', 'new_description', 'new_assigned_to', 'new_due_date']);
+        return $this->safe()->except(['new_title', 'new_description', 'new_assigned_to', 'new_priority', 'new_due_date']);
     }
 }

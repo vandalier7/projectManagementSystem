@@ -29,7 +29,7 @@ class TaskLifecycleEngine
      *
      * @param  array  $changes   Validated input (status, detail fields, submission/review fields)
      * @param  array  $revision  Overrides for the revision task created on rejection
-     *                           (new_title, new_description, new_assigned_to, new_due_date)
+     *                           (new_title, new_description, new_assigned_to, new_priority, new_due_date)
      * @return Task|array{closed_task: Task, revision_task: Task}
      */
     public function update(Task $task, User $actor, array $changes, array $revision = []): Task|array
@@ -131,7 +131,7 @@ class TaskLifecycleEngine
             'description' => $revision['new_description'] ?? $task->description,
             'project_id' => $task->project_id,
             'assigned_to' => $revision['new_assigned_to'] ?? $task->assigned_to,
-            'priority' => $task->priority,
+            'priority' => $revision['new_priority'] ?? $task->priority,
             'requires_submission' => true,
             'status' => TaskStatus::TODO,
             'previous_task_id' => $task->id,
