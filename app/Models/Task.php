@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Services\TaskLifecycle\TaskStatus;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Task extends Model
@@ -69,7 +70,7 @@ class Task extends Model
 
     public function canBeEditedBy(User $user): bool
     {
-        if (in_array($this->status, ['done', 'closed', 'submitted']) && !$user->isAdmin()) {
+        if (in_array($this->status, TaskStatus::LOCKED, true) && !$user->isAdmin()) {
             return false;
         }
         return $this->project->isLedBy($user) || $user->isAdmin();

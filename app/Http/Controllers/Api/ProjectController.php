@@ -8,6 +8,7 @@ use App\Models\ProjectMember;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use App\Jobs\ExtractProjectThemeColor;
+use App\Services\TaskLifecycle\TaskRevisionChain;
 
 class ProjectController extends Controller
 {
@@ -28,38 +29,41 @@ class ProjectController extends Controller
 
 	## Admin sees any project.
 	## Members must have a row in project_members for this project.
-	public function show(Request $request, Project $project)
+	## Tasks come with their full revision chain nested as previous_task.
+	public function show(Request $request, Project $project, TaskRevisionChain $revisions)
 	{
-		$user = $request->user();
+		abort_unless($request->user()->can('view', $project), 403, 'You do not have access to this project.');
 
-		if (!$user->isAdmin()) {
-			$isMember = $project->members()->where('user_id', $user->id)->exists();
+		$project->load([
+			'lead',
+			'tasks.assignee',
+			'members.user:id,full_name,system_role,email,phone,department,avatar_url,profile_completed',
+		]);
 
-			if (!$isMember) {
-				return response()->json(['message' => 'You do not have access to this project.'], 403);
-			}
-		}
+		$revisions->attach($project->tasks);
+
+		return $project;
+	}
+
+	## The system ("Main"/"General") project with its members. Every user is a
+	## member, so this lets the dashboard find it without knowing its id.
+	public function system(Request $request)
+	{
+		$project = Project::main() ?? abort(404, 'System project not found.');
+
+		abort_unless($request->user()->can('view', $project), 403, 'You do not have access to this project.');
 
 		return $project->load([
 			'lead',
-			'tasks.assignee',
-			'tasks.previousTask.assignee',
-			'tasks.previousTask.previousTask.assignee',
-			'tasks.previousTask.previousTask.previousTask.assignee',
-			'tasks.previousTask.previousTask.previousTask.previousTask.assignee',
-			'tasks.previousTask.previousTask.previousTask.previousTask.previousTask.assignee',
-			'tasks.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.assignee',
-			'tasks.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.assignee',
-			'tasks.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.assignee',
-			'tasks.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.assignee',
-			'tasks.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.previousTask.assignee',
 			'members.user:id,full_name,system_role,email,phone,department,avatar_url,profile_completed',
 		]);
 	}
 
 	## Returns the most recent update timestamp across the project and its tasks.
-	public function heartbeat(Project $project)
+	public function heartbeat(Request $request, Project $project)
 	{
+		abort_unless($request->user()->can('view', $project), 403, 'You do not have access to this project.');
+
 		$latestTask = $project->tasks()->latest('updated_at')->first();
 
 		$latest = collect([
@@ -73,9 +77,7 @@ class ProjectController extends Controller
 	## Admin only — creates a new project.
 	public function store(Request $request)
 	{
-		if (!$request->user()->isAdmin()) {
-			return response()->json(['message' => 'Only admins can create projects.'], 403);
-		}
+		abort_unless($request->user()->can('create', Project::class), 403, 'Only admins can create projects.');
 
 		$validated = $request->validate([
 			'name' => 'required|string|max:255',
@@ -113,9 +115,7 @@ class ProjectController extends Controller
 	## without the two rules getting tangled together.
 	public function update(Request $request, Project $project)
 	{
-		if (!$request->user()->isAdmin()) {
-			return response()->json(['message' => 'Only an admin can edit this project.'], 403);
-		}
+		abort_unless($request->user()->can('update', $project), 403, 'Only an admin can edit this project.');
 
 		if ($project->is_system && $request->has('lead_id')) {
 			return response()->json(['message' => "The Main project's lead is managed automatically."], 403);
@@ -144,11 +144,7 @@ class ProjectController extends Controller
 	## endpoint instead of widening what update() accepts.
 	public function updateThemeColor(Request $request, Project $project)
 	{
-		$user = $request->user();
-
-		if (!$user->isAdmin() && !$project->isLedBy($user)) {
-			return response()->json(['message' => 'Only an admin or the project lead can change the theme color.'], 403);
-		}
+		abort_unless($request->user()->can('updateBranding', $project), 403, 'Only an admin or the project lead can change the theme color.');
 
 		if ($project->is_system) {
 			return response()->json(['message' => "The Main project's theme color is managed automatically."], 403);
@@ -166,9 +162,7 @@ class ProjectController extends Controller
 	## Admin only — deletes a project.
 	public function destroy(Request $request, Project $project)
 	{
-		if (!$request->user()->isAdmin()) {
-			return response()->json(['message' => 'Only admins can delete projects.'], 403);
-		}
+		abort_unless($request->user()->can('delete', $project), 403, 'Only admins can delete projects.');
 
 		if ($project->is_system) {
 			return response()->json(['message' => 'The Main project cannot be deleted.'], 403);
@@ -178,12 +172,10 @@ class ProjectController extends Controller
 
 		return response()->json(null, 204);
 	}
-	## Admin only — uploads or replaces a project's logo.
+	## Admin or the project lead — uploads or replaces a project's logo.
 	public function uploadLogo(Request $request, Project $project)
 	{
-		if (!$request->user()->isAdmin() && !$project->isLedBy($request->user())) {
-			return response()->json(['message' => 'Only admins or the project lead can upload a project banner.'], 403);
-		}
+		abort_unless($request->user()->can('updateBranding', $project), 403, 'Only admins or the project lead can upload a project logo.');
 
 		if ($project->is_system) {
 			return response()->json(['message' => "The Main project's logo cannot be changed."], 403);
@@ -204,12 +196,10 @@ class ProjectController extends Controller
 		return response()->json($project);
 	}
 
-	## Admin only — uploads or replaces a project's banner.
+	## Admin or the project lead — uploads or replaces a project's banner.
 	public function uploadBanner(Request $request, Project $project)
 	{
-		if (!$request->user()->isAdmin() && !$project->isLedBy($request->user())) {
-			return response()->json(['message' => 'Only admins or the project lead can upload a project banner.'], 403);
-		}
+		abort_unless($request->user()->can('updateBranding', $project), 403, 'Only admins or the project lead can upload a project banner.');
 
 		if ($project->is_system) {
 			return response()->json(['message' => "The Main project's banner cannot be changed."], 403);

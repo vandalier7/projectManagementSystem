@@ -14,14 +14,7 @@ class ProjectMemberController extends Controller
     // itself — admin sees any, members must already belong to it.
     public function index(Request $request, Project $project)
     {
-        $user = $request->user();
-
-        if (!$user->isAdmin()) {
-            $isMember = $project->members()->where('user_id', $user->id)->exists();
-            if (!$isMember) {
-                return response()->json(['message' => 'You do not have access to this project.'], 403);
-            }
-        }
+        abort_unless($request->user()->can('view', $project), 403, 'You do not have access to this project.');
 
         return $project->members()->with('user')->get();
     }
@@ -29,9 +22,7 @@ class ProjectMemberController extends Controller
     // Admin or the project's lead can add a member.
     public function store(Request $request, Project $project)
     {
-        if (!$this->canManageMembers($request->user(), $project)) {
-            return response()->json(['message' => 'Only the project lead or an admin can add members.'], 403);
-        }
+        abort_unless($request->user()->can('manageMembers', $project), 403, 'Only the project lead or an admin can add members.');
 
         $validated = $request->validate([
             'user_id' => 'required|exists:users,id',
@@ -55,9 +46,7 @@ class ProjectMemberController extends Controller
     // is admin-only, via ProjectController@update, never a membership delete.
     public function destroy(Request $request, Project $project, User $user)
     {
-        if (!$this->canManageMembers($request->user(), $project)) {
-            return response()->json(['message' => 'Only the project lead or an admin can remove members.'], 403);
-        }
+        abort_unless($request->user()->can('manageMembers', $project), 403, 'Only the project lead or an admin can remove members.');
 
         if ($project->isLedBy($user)) {
             return response()->json(['message' => 'The project lead cannot be removed as a member. Reassign the lead first.'], 422);
@@ -76,10 +65,5 @@ class ProjectMemberController extends Controller
         $membership->delete();
 
         return response()->json(null, 204);
-    }
-
-    private function canManageMembers(User $actingUser, Project $project): bool
-    {
-        return $actingUser->isAdmin() || $project->isLedBy($actingUser);
     }
 }
