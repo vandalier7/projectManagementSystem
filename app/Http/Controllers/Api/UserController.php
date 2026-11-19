@@ -114,10 +114,7 @@ class UserController extends Controller
 			->whereNotIn('status', ['done', 'closed'])
 			->update(['assigned_to' => null]);
 
-		$membershipCount = $user->projectMemberships()->count();
-		\Log::info("About to delete {$membershipCount} memberships for user {$user->id}");
-		$deleted = $user->projectMemberships()->delete();
-		\Log::info("Deleted count: {$deleted}");
+		$user->projectMemberships()->delete();
 
 		$user->delete();
 
@@ -276,6 +273,24 @@ class UserController extends Controller
 			'password' => $validated['password'],
 			'must_change_password' => false,
 		]);
+
+		return response()->json($user);
+	}
+
+	## Changes the authenticated user's own email. Requires their current password.
+	public function changeEmail(Request $request)
+	{
+		if ($error = $this->verifyPassword($request)) {
+			return $error;
+		}
+
+		$user = $request->user();
+
+		$validated = $request->validate([
+			'email' => ['required', 'email', 'max:100', Rule::unique('users', 'email')->ignore($user->id)],
+		]);
+
+		$user->update(['email' => $validated['email']]);
 
 		return response()->json($user);
 	}

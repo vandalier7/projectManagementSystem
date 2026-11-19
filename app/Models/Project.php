@@ -62,6 +62,24 @@ class Project extends Model
         return $this->lead_id === $user->id;
     }
 
+    public function hasMember(User $user): bool
+    {
+        return $this->members()->where('user_id', $user->id)->exists();
+    }
+
+    /**
+     * Whether a new task in this project should require submission, per the
+     * project's task_default_submission_mode setting.
+     */
+    public function defaultRequiresSubmission(): bool
+    {
+        return match ($this->task_default_submission_mode) {
+            'no_require' => false,
+            'match_last' => $this->tasks()->latest()->first()?->requires_submission ?? true,
+            default => true,
+        };
+    }
+
     public function scopeVisible($query)
     {
         return $query->where('is_system', false);

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Notification;
 use App\Models\NotificationRead;
+use App\Models\Project;
 use App\Models\ProjectMember;
 use Illuminate\Http\Request;
 
@@ -94,7 +95,8 @@ class NotificationController extends Controller
     {
         return ProjectMember::where('user_id', $userId)
             ->pluck('project_id')
-            ->push(1)
+            ->push(Project::main()?->id)
+            ->filter()
             ->unique()
             ->toArray();
     }
