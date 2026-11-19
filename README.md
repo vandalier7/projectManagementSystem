@@ -1,60 +1,100 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Project Dashboard — API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Laravel 12 REST API for Project Dashboard, a role-based project and task
+management system. The Next.js client lives in
+[projectManagementFrontend](https://github.com/vandalier7/projectManagementFrontend).
 
-## About Laravel
+## Running it
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+```bash
+cp .env.example .env
+docker compose up -d          # PHP-FPM, Nginx (:8080), MySQL, Redis, queue worker
+docker compose exec app php artisan key:generate
+docker compose exec app php artisan migrate --seed
+```
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+The API is served at `http://localhost:8080/api`. Seeded logins:
+`admin@temp.net / adminpass` (admin) and `vandalier@gmail.com / qwertyuiop` (member).
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### Tests
 
-## Learning Laravel
+```bash
+php artisan test
+```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Tests use an in-memory SQLite database, so they need no Docker or MySQL.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Architecture
 
-## Laravel Sponsors
+```
+app/
+├── Http/
+│   ├── Controllers/Api/       Thin HTTP layer: validate → authorize → delegate → respond
+│   ├── Requests/Task/         Form Requests (validation for task create/update)
+│   └── Resources/             JSON shapes (TaskResource, DashboardTaskResource)
+├── Policies/                  Who may do what (ProjectPolicy, TaskPolicy)
+├── Services/
+│   ├── TaskLifecycle/         Task Lifecycle Engine (custom-built component)
+│   └── NotificationService.php
+├── Models/                    Eloquent models + relationship helpers
+└── Jobs/                      Queued work (theme colour extraction)
+```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+### Authentication and identity
 
-### Premium Partners
+Every route except `POST /login` requires a Sanctum bearer token. Controllers
+always act as `$request->user()`. **Never** decide who is acting from a user id
+sent by the client: an earlier version did this (`acting_as_user_id`, `?user=`),
+which let any user act as an admin. `tests/Feature/AuthorizationTest.php`
+guards against that coming back.
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### Roles
 
-## Contributing
+| Role | Can |
+|---|---|
+| Admin | Everything: users, projects, any task |
+| Project lead | Create, edit, delete and review tasks in their project; manage members, logo, banner, theme colour |
+| Member | View their projects; start, submit and take back their own tasks |
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Project-level rules are in `ProjectPolicy`; task-level coarse rules are in
+`TaskPolicy`. Status transitions have finer rules, enforced by the engine below.
 
-## Code of Conduct
+### Task Lifecycle Engine
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+`app/Services/TaskLifecycle/TaskLifecycleEngine.php` owns every task status
+change. Each change runs in a database transaction with a row lock
+(`lockForUpdate`), so two people acting on the same task at the same time
+can't interleave.
 
-## Security Vulnerabilities
+```
+todo ──start──▶ in_progress ──submit──▶ submitted ──approve──▶ done
+                     ▲                      │
+                     └──── take back ───────┤
+                                            └──reject──▶ closed  +  new revision (todo)
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+- **Start** an unassigned task to claim it. A lead or admin who starts a task
+  doesn't need to submit it.
+- **Submit** needs a link; only the assignee can submit or take back.
+- **Approve / reject** is for the project lead or an admin. Rejecting closes the
+  task and creates a revision linked by `previous_task_id`, so the full history
+  is kept.
+- Tasks that don't need submission (or are assigned to the lead) can go
+  straight from `in_progress` to `done`.
+- In the system ("General") project, anyone can complete an unassigned task.
 
-## License
+`TaskRevisionChain` loads revision chains to any depth. It uses one query per
+level of the chain, not one per task.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-"# projectManagementSystem" 
+### Main endpoints
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/login`, `/logout` | |
+| GET | `/projects`, `/projects/{id}` | Project detail includes tasks with nested `previous_task` chains |
+| GET | `/projects/system`, `/projects/system/tasks` | The system project and the current user's view of its tasks |
+| GET | `/projects/{id}/heartbeat` | Last-updated timestamp for live board syncing |
+| POST/PUT/DELETE | `/tasks`, `/tasks/{id}` | Status changes go through the lifecycle engine |
+| GET | `/tasks/mine`, `/tasks/{id}/history` | Current user's open tasks; a task's revision chain |
+| POST | `/tasks/reorder` | Lead/admin; `{ ordered_ids: [...] }` |
+| * | `/projects/{id}/members`, `/users`, `/notifications` | |
